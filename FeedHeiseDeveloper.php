@@ -1,121 +1,123 @@
 <?php
-/* heise dev News */
-
-/* Heise Feed Version 0.2 MODIFIED by Sören Jentzsch */
 header("Content-type: text/xml; charset=UTF-8");
 
-/* URL zu dieser Datei bzw. zu dem Ordner */
+
+/* 
+ * heise-rss-improved
+ * Project-site: https://code.google.com/p/heise-rss-improved/
+ *
+ * heise dev RSS feed
+ */
+
+
+/* the source-feed which we want to improve and provide */
+define('SOURCEFEED', 'http://www.heise.de/developer/rss/news-atom.xml');
+
+/* URL pointing to the directory containing this file */
 define('URL', 'http://feeds.legonomy.de/');
 
-/* Cache-Ordner, in dem die Artikel zwischengespeichert werden */
+/* name of the cache-folder containing the articles (folder has to be writable and placed in the same folder as is this script) */
 define('CACHEFOLDER', 'FeedHeiseDeveloper');
 
-/* Sekunden, in denen der Feed nicht aktualisiert wird. Das verhindert bei mehreren Clients, dass der Server und Heise belastet werden. */
+/* seconds in which the feed is not being updated, prevents the server and heise from being stressed too much */
 define('FEEDINTERVAL', 60);
 
-/* Anzahl der Artikel, die im Cache-Ordner gespeichert werden sollen */
-define('MAXARTIKELS', 300);
+/* maximum of articles being stored in the cache folder */
+define('MAXARTICLES', 300);
 
-/* Anzahl der Zeichen des Teasers (genau: Teaser = die ersten MAXCHARS Zeichen minus zuletzt angefangener Satz (wenn Rest mind. 200 Zeichen umfasst, ansonsten einfach abschneiden)) */
+/* set this to 0 if you want just the teaser, set this to 1 if you want the whole text of the article in your RSS feed (MAXCHARS and MINCHARS will be ignored, CARE: NOT quite tested yet!) */
+define('FULLTEXT', 0);
+
+/* amount of characters of the teaser (minus last started sentences, if the remaining characters are at least MINCHARS) */
 define('MAXCHARS', 600);
+define('MINCHARS', 300);
 
-/* Hole den Artikel mit ID und Datum von dem Cache-Ordner bzw. von Heise */
-function getArtikel($id, $date)
+
+
+/* fetch the article with the given $id and $date from the cache-folder or (if not cached yet) from heise */
+function getArticle($id, $topic, $date)
 {
-	/* Artikel aus dem Cacheordner holen, falls er existiert und nicht reload angegeben ist. */
+  /* fetch the article from the cache-folder if it exists there and "reload" is not denoted */
 	if($_GET["do"] != "reload" && file_exists(CACHEFOLDER."/".$date."-".$id.".txt"))
-		$artikelFertig = file_get_contents(CACHEFOLDER."/".$date."-".$id.".txt");
-	else
+		$articleDone = file_get_contents(CACHEFOLDER."/".$date."-".$id.".txt");
+	/* else: fetch the article from heise */
+  else
 	{
-		if(!($artikelRoh = file_get_contents('http://www.heise.de/developer/meldung/'.$id.'.html?view=print')))
-			$artikelFertig = "Fehler: Artikel konnte nicht geladen werden";
+		if(!($articleRaw = file_get_contents('http://www.heise.de/developer/'.$topic.'/'.$id.'.html?view=print')))
+			$articleDone = 'Error: Article '.$id.' could not be fetched from heise';
 		else
 		{
-			if(preg_match("/<div class=\"meldung_wrapper\">(.+)<\/div>(.+)<\/div>/si", $artikelRoh, $treffer))
-			{
-				$artikelFertig = $treffer[0];
-				$artikelFertig = strip_tags($artikelFertig, '<p><span>');
-				$artikelFertig = preg_replace("/<span[^>]*>(.*?)<\/span>/", "", $artikelFertig); // lösche ggf. Bildunterschriften
-				$artikelFertig = preg_replace("/\[\d+\]/", "", $artikelFertig);
-				$artikelFertig = trim(htmlspecialchars($artikelFertig));
+		  /* start with extracting right after the html-element "<div class="meldung_wrapper">" */
+			if(!preg_match("/<div class=\"meldung_wrapper\">(.+)<\/div>(.+)<\/div>/si", $articleRaw, $matches))
+        $articleDone = 'Error: No teaser could be extracted in the article '.$id;
+      else
+      {
+				$articleDone = $matches[0];
+				$articleDone = strip_tags($articleDone, '<p><span>'); // delete html-style-formatting, except <p> and <span>
+				$articleDone = preg_replace("/<span[^>]*>(.*?)<\/span>/", "", $articleDone); // delete text under pictures (~"Bildunterschriften")
+				$articleDone = preg_replace("/\[\d+\]/", "", $articleDone); // delete link-referrers
+				$articleDone = trim(htmlspecialchars($articleDone));  // delete htmlspecialchars
 				
-				/*$posMarker = 0;
-				$posB = -1;
-				for($i=1; $i<5; $i++)
-				{
-					$posMarker = strpos($artikelFertig, '['.$i.']', $posMarker);
-					if($posMarker && $posMarker <= 1000)
-					{
-						$startURL = strpos($artikelFertig, 'http', strpos($artikelFertig, '['.$i.']', $posMarker+1));
-						$URL = substr($artikelFertig, $startURL, strpos($artikelFertig, '&nbsp;', $startURL)-$startURL);
-						strpos($artikelFertig, '['.$i.']', $posMarker);
-						$posB = strpos($artikelFertig, '<b>', $posB+1);
-						//echo "<br>".$URL."<br>";
-					}
-					else
-						break;
-				}*/
+        if(FULLTEXT == 0)
+        {
+  				/* cut the teaser after MAXCHARS characters minus last beginning sentence (if the rest is at least MINCHARS characters long) */
+          $articleDone = substr($articleDone, 0, MAXCHARS);
+  				$posPoint = strrpos($articleDone, '. ');
+  				$posQuestionMark = strrpos($articleDone, '? ');
+  				if($posPoint > $posQuestionMark && $posPoint > MINCHARS)
+  					$articleDone = substr($articleDone, 0, $posPoint) . '. ...';
+  				else if($posQuestionMark > MINCHARS)
+  					$articleDone = substr($articleDone, 0, $posQuestionMark) . '? ...';
+  				else
+  					$articleDone .= " ...";
+        }
 				
-				// Abschneiden nach: Die ersten MAXCHARS Zeichen minus zuletzt angefangener Satz (wenn Rest mind. 200 Zeichen umfasst)
-				$artikelFertig = substr($artikelFertig, 0, MAXCHARS);
-				$endePunkt = strrpos($artikelFertig, '. ');
-				$endeFragezeichen = strrpos($artikelFertig, '? ');
-				if($endePunkt > $endeFragezeichen && $endePunkt > 200)
-				{
-					$artikelFertig = substr($artikelFertig, 0, $endePunkt);
-					$artikelFertig .= ". ...";
-				}
-				else if($endeFragezeichen > 200)
-				{
-					$artikelFertig = substr($artikelFertig, 0, $endeFragezeichen);
-					$artikelFertig .= "? ...";
-				}
-				else
-					$artikelFertig .= " ...";
-				
-				file_put_contents(CACHEFOLDER."/".$date."-".$id.".txt", $artikelFertig);
+        /* write this resulting teaser in a file */
+				file_put_contents(CACHEFOLDER."/".$date."-".$id.".txt", $articleDone);
 			}
-			else
-				$artikelFertig = "Es konnte kein Artikeltext extrahiert werden";
 		}
 	}
 	
-	/* Alte Artikel im Cache-Ordner löschen */
+  /* delete old articles in the cache-folder if necessary */
 	$files = scandir(CACHEFOLDER);
-	while(count($files) > MAXARTIKELS)
+	while(count($files) > MAXARTICLES)
 	{
 		unlink(CACHEFOLDER."/".$files[2]);
 		$files = scandir(CACHEFOLDER);
 	}
 	
-	return $artikelFertig;
+	return $articleDone;
 }
 
-/* Mit ?do=reload werden alle Artikel des Feeds neu eingelesen. Mit ?do=sync wird nur überprüft ob es neue Artikel gibt. */
+/* modify our RSS feed only if necessary */
 if($_GET["do"]=="reload" || $_GET["do"]=="sync" || !file_exists(CACHEFOLDER."/"."FeedHeiseDeveloper.txt") || time() - filemtime(CACHEFOLDER."/"."FeedHeiseDeveloper.txt") > FEEDINTERVAL)
 {
-	$xml = DOMDocument::load("http://www.heise.de/developer/rss/news-atom.xml");
+	$xml = DOMDocument::load(SOURCEFEED);
 	$entrys = $xml->getElementsByTagName('entry');
 	
-	/* Eigene URL setzen */
-	$xml->getElementsByTagName('link')->item(1)->attributes->item(1)->nodeValue=URL;
-
+	/* set the field 'link' to our Server-URL */
+	$xml->getElementsByTagName('link')->item(1)->attributes->item(1)->nodeValue = URL;
+  
+  /* now we improve/modify every single entry of the RSS feed */
 	for($i=0; $i<$entrys->length; $i++)
 	{
 		$entry = $entrys->item($i);
+    
+    /* example: http://www.heise.de/developer/meldung/Rhodes-3-0-integriert-sich-in-Eclipse-1241360.html/from/atom10 -> $topic = meldung [or article] */
+    $topic = substr($entry->getElementsByTagName('id')->item(0)->nodeValue, 30, 7);
+    
+    /* example: http://www.heise.de/developer/meldung/Rhodes-3-0-integriert-sich-in-Eclipse-1241360.html/from/atom10 -> $id = Rhodes-3-0-integriert-sich-in-Eclipse-1241360 */
 		$id = substr($entry->getElementsByTagName('id')->item(0)->nodeValue, 38, -17);
+    
+    /* example: $date = 2011-05-11T13:41:15+02:00 */
 		$date = $entry->getElementsByTagName('updated')->item(0)->nodeValue;
 		
+    /* now we add the new element "summary" to our rss feed */
 		$element = $xml->createElement('summary');
 		$entry->appendChild($element);
-		$entry->getElementsByTagName('summary')->item(0)->setAttribute('type','html');
+		$entry->getElementsByTagName('summary')->item(0)->setAttribute('type', 'html');
 
-		/* Setze das Datum zurück, falls der Artikel nicht aktualisiert wurde. 
-		* Heise verändert das Datum bei der Hälfte der Artikel, ohne dass sich
-		* der Inhalt ändert. Darum wird nur ein Update gemacht, wenn auch
-		* "Update" im Title steht.
-		*/
-		
+		/* heise seems to change the date of many articles without changing the content. make sure, to only update, when there is an "update" in the title of the article */
 		if(!preg_match("/\[update\]/i", $entry->getElementsByTagName('title')->item(0)->nodeValue))
 		{
 			$files = scandir(CACHEFOLDER);
@@ -129,10 +131,11 @@ if($_GET["do"]=="reload" || $_GET["do"]=="sync" || !file_exists(CACHEFOLDER."/".
 			}
 		}
 		
-		$artikelInhalt = getArtikel($id, $date);
-		$entrys->item($i)->getElementsByTagName('summary')->item(0)->nodeValue = $artikelInhalt;
+    /* now we fill the new element "summary" with our teaser */
+		$entrys->item($i)->getElementsByTagName('summary')->item(0)->nodeValue = getArticle($id, $topic, $date);
 	}
 	
+  /* save the xml-file and publish it */
 	$feed = $xml->saveXML();
 	file_put_contents(CACHEFOLDER."/"."FeedHeiseDeveloper.txt", $feed);
 	echo $feed;
