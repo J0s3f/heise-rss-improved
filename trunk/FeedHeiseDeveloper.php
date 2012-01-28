@@ -113,8 +113,8 @@ if($_GET["do"]=="reload" || $_GET["do"]=="sync" || !file_exists(CACHEFOLDER."/".
 		$date = $entry->getElementsByTagName('updated')->item(0)->nodeValue;
 		
     /* now we add the new element "summary" to our rss feed */
-		$element = $xml->createElement('summary');
-		$entry->appendChild($element);
+		//$element = $xml->createElement('summary');
+		//$entry->appendChild($element);
 		$entry->getElementsByTagName('summary')->item(0)->setAttribute('type', 'html');
 
 		/* heise seems to change the date of many articles without changing the content. make sure, to only update, when there is an "update" in the title of the article */
@@ -132,7 +132,8 @@ if($_GET["do"]=="reload" || $_GET["do"]=="sync" || !file_exists(CACHEFOLDER."/".
 		}
 		
     /* now we fill the new element "summary" with our teaser */
-		$entrys->item($i)->getElementsByTagName('summary')->item(0)->nodeValue = getArticle($id, $topic, $date);
+    $summary_heise = trim(htmlspecialchars(strip_tags($entrys->item($i)->getElementsByTagName('summary')->item(0)->nodeValue)));
+    $entrys->item($i)->getElementsByTagName('summary')->item(0)->nodeValue = "<p><i>".$summary_heise."</i></p>".getArticle($id, $topic, $date);
 	}
 	
   /* save the xml-file and publish it */
