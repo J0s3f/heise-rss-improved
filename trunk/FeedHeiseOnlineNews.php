@@ -92,7 +92,18 @@ function getArticle($id, $date)
 /* modify our RSS feed only if necessary */
 if($_GET["do"]=="reload" || $_GET["do"]=="sync" || !file_exists(CACHEFOLDER."/"."FeedHeiseOnlineNews.txt") || time() - filemtime(CACHEFOLDER."/"."FeedHeiseOnlineNews.txt") > FEEDINTERVAL)
 {
+  /*$opts = array(
+    'http' => array(
+        'user_agent' => 'PHP libxml agent',
+    )
+  );
+  
+  $context = stream_context_create($opts);
+  libxml_set_streams_context($context);*/
 	$xml = DOMDocument::load(SOURCEFEED);
+  
+  //$xml = simplexml_load_file(SOURCEFEED);
+    
 	$entrys = $xml->getElementsByTagName('entry');
 	
 	/* set the field 'link' to our Server-URL */
@@ -104,7 +115,8 @@ if($_GET["do"]=="reload" || $_GET["do"]=="sync" || !file_exists(CACHEFOLDER."/".
 		$entry = $entrys->item($i);
     
     /* example: http://www.heise.de/newsticker/meldung/Gewinnwachstum-bei-Freenet-1241460.html/from/atom10 -> $id = Gewinnwachstum-bei-Freenet-1241460 */
-		$id = substr($entry->getElementsByTagName('id')->item(0)->nodeValue, 39, -17);
+		$id = substr($entry->getElementsByTagName('link')->item(0)->attributes->item(0)->nodeValue, 39, -17);
+    //$id = substr($entry->getElementsByTagName('id')->item(0)->nodeValue, 39, -17);
     
     /* example: $date = 2011-05-11T13:41:15+02:00 */
 		$date = $entry->getElementsByTagName('updated')->item(0)->nodeValue;
